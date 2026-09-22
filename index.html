@@ -20,6 +20,10 @@
   --orange-dim:#ff7a4522;
   --blue:#4c9eff;
   --blue-dim:#4c9eff22;
+  --red:#ff5468;
+  --red-dim:#ff546822;
+  --yellow:#ffcc4d;
+  --yellow-dim:#ffcc4d22;
   --radius:10px;
 }
 *{box-sizing:border-box; margin:0; padding:0;}
@@ -145,6 +149,18 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--blue);}
 .tag.entregue{background:var(--surface-2); color:var(--muted);}
 .tag.baixo{background:var(--orange-dim); color:var(--orange);}
 .tag.vencido{background:var(--orange-dim); color:var(--orange);}
+.urg{display:inline-block; padding:3px 9px; border-radius:5px; font-size:11.5px; font-weight:600; white-space:nowrap;}
+.urg.red{background:var(--red-dim); color:var(--red);}
+.urg.orange{background:var(--orange-dim); color:var(--orange);}
+.urg.yellow{background:var(--yellow-dim); color:var(--yellow);}
+.urg.green{background:var(--green-dim); color:var(--green);}
+.urg.muted{background:var(--surface-2); color:var(--muted);}
+.agenda-destaque .row{display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--border); flex-wrap:wrap;}
+.agenda-destaque .row:last-child{border-bottom:none;}
+.agenda-destaque .info{flex:1; min-width:180px;}
+.agenda-destaque .cliente{font-weight:600; font-size:13.5px;}
+.agenda-destaque .desc{color:var(--muted); font-size:12.5px; margin-top:2px;}
+.agenda-destaque .valor{font-family:'JetBrains Mono',monospace; font-size:13px; min-width:80px; text-align:right;}
 .pedido-card{background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:14px 16px; margin-bottom:10px;}
 .pedido-top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px; flex-wrap:wrap;}
 .pedido-top .cliente{font-weight:600; font-size:14.5px;}
@@ -265,6 +281,11 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--blue);}
           <h1 class="display">Painel geral</h1>
           <p>Visão consolidada do caixa da oficina.</p>
         </div>
+      </div>
+
+      <div class="panel" id="agenda-destaque-panel">
+        <h2>Agenda de pedidos</h2>
+        <div class="agenda-destaque" id="agenda-destaque-wrap"></div>
       </div>
 
       <div class="grid cards">
@@ -405,7 +426,7 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--blue);}
       </div>
 
       <div class="panel">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
           <h2 style="margin:0;" id="cal-titulo">—</h2>
           <div style="display:flex; gap:8px;">
             <button class="btn ghost" id="cal-prev">‹</button>
@@ -413,6 +434,24 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--blue);}
           </div>
         </div>
         <div class="cal-grid" id="cal-grid"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Enviar para o calendário do celular</h2>
+        <p style="font-size:13px; color:var(--muted); line-height:1.6; margin-bottom:14px;">
+          Gera um arquivo com os prazos de entrega e lembretes em aberto. Importe esse arquivo no Google Agenda (Configurações → Importar) ou no Calendário do iPhone (basta abrir o arquivo) para receber os lembretes nativos do seu celular.
+        </p>
+        <button class="btn" id="cal-export">Exportar agenda (.ics)</button>
+        <div class="hint" style="margin-top:14px;">Como os dados mudam com o tempo, exporte de novo sempre que quiser atualizar o calendário do celular com os prazos mais recentes.</div>
+      </div>
+
+      <div class="panel">
+        <h2>Lembretes no navegador</h2>
+        <p style="font-size:13px; color:var(--muted); line-height:1.6; margin-bottom:14px;">
+          Ativa um aviso automático quando um pedido vence hoje ou amanhã, enquanto este app estiver aberto em alguma aba do navegador ou instalado na tela inicial. Não substitui a exportação acima, que funciona mesmo com o app fechado.
+        </p>
+        <button class="btn ghost" id="notif-ativar">Ativar lembretes no navegador</button>
+        <div id="notif-status" class="hint"></div>
       </div>
 
       <div class="panel">
@@ -635,6 +674,8 @@ function iniciarListenersOperacionais(){
     pedidos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
     renderPedidos();
     renderCalendario();
+    renderAgendaDestaque();
+    verificarLembretesNotificacao();
   }, (err)=>{ console.error(err); });
 
   unsubEstoque = onSnapshot(query(collection(db,'estoque'), orderBy('nome','asc')), (snap)=>{
@@ -907,14 +948,14 @@ function renderPedidos(){
 
   const hoje = new Date().toISOString().slice(0,10);
   wrap.innerHTML = list.map((p,i)=>{
-    const vencido = p.prazo && p.prazo < hoje && p.status!=='entregue';
+    const u = calcUrgencia(p.prazo, p.status);
     const item = estoque.find(e=>e.id===p.materialId);
     return `<div class="pedido-card">
       <div class="pedido-top">
         <div><span class="mono" style="color:var(--muted); font-size:12px;">#${i+1}</span> <span class="cliente">${p.cliente}</span></div>
         <div style="display:flex; gap:6px;">
+          <span class="urg ${u.cls}">${u.label}</span>
           <span class="tag ${p.status}">${STATUS_LABEL[p.status]}</span>
-          ${vencido ? '<span class="tag vencido">Prazo vencido</span>' : ''}
           ${p.pago ? '<span class="tag pronto">Pago</span>' : ''}
         </div>
       </div>
@@ -1057,6 +1098,108 @@ function renderCalendario(){
     ${i.tipo==='lembrete' ? `<button class="del" onclick="excluirLembrete('${i.id}')">✕</button>` : ''}
   </div>`).join('');
 }
+
+// ---- Urgência de prazos ----
+function calcUrgencia(prazo, status){
+  if(status==='entregue') return { dias:null, cls:'muted', label:'Entregue' };
+  if(!prazo) return { dias:null, cls:'muted', label:'Sem prazo' };
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const [ay,am,ad] = prazo.split('-').map(Number);
+  const dataPrazo = new Date(ay, am-1, ad);
+  const dias = Math.round((dataPrazo - hoje) / 86400000);
+  if(dias < 0) return { dias, cls:'red', label:`Atrasado ${Math.abs(dias)}d` };
+  if(dias === 0) return { dias, cls:'red', label:'Vence hoje' };
+  if(dias <= 2) return { dias, cls:'orange', label:`Vence em ${dias}d` };
+  if(dias <= 7) return { dias, cls:'yellow', label:`Vence em ${dias}d` };
+  return { dias, cls:'green', label:`${dias}d restantes` };
+}
+
+function renderAgendaDestaque(){
+  const wrap = document.getElementById('agenda-destaque-wrap');
+  const abertos = pedidos.filter(p=>p.status!=='entregue')
+    .sort((a,b)=>{
+      if(!a.prazo) return 1;
+      if(!b.prazo) return -1;
+      return a.prazo.localeCompare(b.prazo);
+    })
+    .slice(0,8);
+  if(abertos.length===0){ wrap.innerHTML = '<div class="empty">Nenhum pedido em aberto — a fila está em dia.</div>'; return; }
+  wrap.innerHTML = abertos.map(p=>{
+    const u = calcUrgencia(p.prazo, p.status);
+    return `<div class="row">
+      <span class="urg ${u.cls}">${u.label}</span>
+      <div class="info">
+        <div class="cliente">${p.cliente}</div>
+        <div class="desc">${p.desc}</div>
+      </div>
+      <span class="tag ${p.status}">${STATUS_LABEL[p.status]}</span>
+      <div class="valor">${fmt(p.valor)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ---- Exportar para calendário do celular (.ics) ----
+function pad(n){ return String(n).padStart(2,'0'); }
+document.getElementById('cal-export').addEventListener('click', ()=>{
+  const linhas = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Camada//Agenda//PT'];
+  const hoje = new Date();
+  const stamp = `${hoje.getFullYear()}${pad(hoje.getMonth()+1)}${pad(hoje.getDate())}T000000Z`;
+
+  pedidos.filter(p=>p.prazo && p.status!=='entregue').forEach(p=>{
+    const dt = p.prazo.replace(/-/g,'');
+    linhas.push('BEGIN:VEVENT', `UID:pedido-${p.id}@camada`, `DTSTAMP:${stamp}`,
+      `DTSTART;VALUE=DATE:${dt}`, `SUMMARY:Entrega — ${p.cliente}`,
+      `DESCRIPTION:${(p.desc||'').replace(/\n/g,' ')} (${fmt(p.valor)})`, 'END:VEVENT');
+  });
+  lembretes.forEach(l=>{
+    const dt = l.data.replace(/-/g,'');
+    linhas.push('BEGIN:VEVENT', `UID:lembrete-${l.id}@camada`, `DTSTAMP:${stamp}`,
+      `DTSTART;VALUE=DATE:${dt}`, `SUMMARY:${l.titulo}`,
+      `DESCRIPTION:${(l.nota||'').replace(/\n/g,' ')}`, 'END:VEVENT');
+  });
+  linhas.push('END:VCALENDAR');
+
+  const blob = new Blob([linhas.join('\r\n')], { type:'text/calendar' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'agenda-camada.ics';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+// ---- Lembretes no navegador ----
+let jaNotificados = new Set();
+try{ jaNotificados = new Set(JSON.parse(localStorage.getItem('camada-notificados')||'[]')); }catch(e){}
+
+function atualizarStatusNotificacao(){
+  const el = document.getElementById('notif-status');
+  if(!('Notification' in window)){ el.textContent = 'Seu navegador não suporta esse tipo de aviso.'; return; }
+  if(Notification.permission==='granted') el.textContent = 'Lembretes ativados neste navegador.';
+  else if(Notification.permission==='denied') el.textContent = 'Permissão negada — ative pelas configurações do navegador/site.';
+  else el.textContent = 'Ainda não ativado.';
+}
+atualizarStatusNotificacao();
+
+document.getElementById('notif-ativar').addEventListener('click', async ()=>{
+  if(!('Notification' in window)){ alert('Seu navegador não suporta esse tipo de aviso.'); return; }
+  await Notification.requestPermission();
+  atualizarStatusNotificacao();
+  verificarLembretesNotificacao();
+});
+
+function verificarLembretesNotificacao(){
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  pedidos.filter(p=>p.status!=='entregue' && p.prazo).forEach(p=>{
+    const u = calcUrgencia(p.prazo, p.status);
+    const chave = p.id+'-'+p.prazo;
+    if((u.dias===0 || u.dias===1) && !jaNotificados.has(chave)){
+      new Notification('Prazo se aproximando — Camada', { body: `${p.cliente}: ${p.desc} (${u.label.toLowerCase()})` });
+      jaNotificados.add(chave);
+      try{ localStorage.setItem('camada-notificados', JSON.stringify([...jaNotificados])); }catch(e){}
+    }
+  });
+}
+setInterval(verificarLembretesNotificacao, 30*60*1000);
 
 // ---- Precificação ----
 document.getElementById('p-calc').addEventListener('click', ()=>{
