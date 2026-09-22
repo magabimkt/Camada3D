@@ -235,6 +235,10 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--blue);}
     <input type="password" id="login-senha" placeholder="••••••••" style="margin-bottom:16px;">
     <button class="btn" id="login-btn" style="width:100%;">Entrar</button>
     <div id="login-erro" style="color:var(--orange); font-size:12.5px; margin-top:10px; display:none;"></div>
+    <div id="login-msg" style="color:var(--green); font-size:12.5px; margin-top:10px; display:none;"></div>
+    <div style="text-align:center; margin-top:14px;">
+      <a href="#" id="esqueci-senha" style="color:var(--blue); font-size:12.5px; text-decoration:none;">Esqueci minha senha</a>
+    </div>
     <div class="hint" style="margin-top:16px;">Acesso restrito aos dois sócios. As contas são criadas direto no console do Firebase.</div>
   </div>
 </div>
@@ -594,7 +598,7 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--blue);}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot,
@@ -657,6 +661,24 @@ document.getElementById('login-btn').addEventListener('click', async ()=>{
 
 document.getElementById('logout-btn').addEventListener('click', async ()=>{
   await signOut(auth);
+});
+
+document.getElementById('esqueci-senha').addEventListener('click', async (ev)=>{
+  ev.preventDefault();
+  const erroEl = document.getElementById('login-erro');
+  const msgEl = document.getElementById('login-msg');
+  erroEl.style.display = 'none';
+  msgEl.style.display = 'none';
+  const email = document.getElementById('login-email').value.trim();
+  if(!email){ erroEl.textContent = 'Digite seu e-mail no campo acima primeiro.'; erroEl.style.display = 'block'; return; }
+  try{
+    await sendPasswordResetEmail(auth, email);
+    msgEl.textContent = 'Enviamos um link de redefinição para ' + email + '. Confira sua caixa de entrada (e o spam).';
+    msgEl.style.display = 'block';
+  }catch(e){
+    erroEl.textContent = 'Não foi possível enviar o e-mail. Confira se o endereço está correto.';
+    erroEl.style.display = 'block';
+  }
 });
 
 onAuthStateChanged(auth, (user)=>{
